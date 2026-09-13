@@ -194,7 +194,7 @@
       <thead><tr><th>色线</th><th class="num">计划(米)</th><th class="num">实际耗线(米)</th></tr></thead>
       <tbody id="finishRows"></tbody>
     </table>
-    <div class="muted" style="margin-top:6px">实际少于计划的部分自动退回库存；多于计划按实耗记账。</div>
+    <div class="muted" style="margin-top:6px">实际少于计划的部分自动退回库存；超出计划的部分从库存补扣并记流水。</div>
     <div class="btns">
       <button class="ghost" data-close="finishMask">取消</button>
       <button id="btnDoFinish">确认完工</button>
@@ -439,8 +439,8 @@ function renderMachines() {
 }
 
 /* ---------- 渲染：流水 ---------- */
-const LEDGER_TXT = { in: "入库", issue: "领料", consume: "完工耗线", ret: "退回" };
-const LEDGER_SIGN = { in: "+", issue: "−", consume: "−", ret: "+" };
+const LEDGER_TXT = { in: "入库", issue: "领料", consume: "完工耗线", ret: "退回", over: "超耗补扣" };
+const LEDGER_SIGN = { in: "+", issue: "−", consume: "−", ret: "+", over: "−" };
 function renderLedger() {
   const tb = $("ledgerRows");
   const rows = [...state.ledger].reverse();
@@ -673,10 +673,14 @@ $("btnDoFinish").onclick = () => {
     const t = threadById(i.threadId);
     const code = t ? t.code : "?";
     state.ledger.push({ id: uid(), ts: nowStr(), type: "consume", threadId: i.threadId, code, qty: a.qty, stepId: s.id, stepLabel: s.label, note: "完工实耗" });
-    const back = Math.round((i.qty - a.qty) * 100) / 100;
-    if (back > 0) {
-      if (t) t.stock = Math.round((t.stock + back) * 100) / 100;
-      state.ledger.push({ id: uid(), ts: nowStr(), type: "ret", threadId: i.threadId, code, qty: back, stepId: s.id, stepLabel: s.label, note: "余线退回" });
+    const diff = Math.round((i.qty - a.qty) * 100) / 100;
+    if (diff > 0) {
+      if (t) t.stock = Math.round((t.stock + diff) * 100) / 100;
+      state.ledger.push({ id: uid(), ts: nowStr(), type: "ret", threadId: i.threadId, code, qty: diff, stepId: s.id, stepLabel: s.label, note: "余线退回" });
+    } else if (diff < 0) {
+      const over = -diff;
+      if (t) t.stock = Math.round((t.stock - over) * 100) / 100;
+      state.ledger.push({ id: uid(), ts: nowStr(), type: "over", threadId: i.threadId, code, qty: over, stepId: s.id, stepLabel: s.label, note: "超计划耗线补扣" });
     }
   });
   s.actuals = actuals; s.status = "done"; s.doneAt = nowStr();
